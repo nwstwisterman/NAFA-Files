@@ -1,94 +1,147 @@
-const WebSocket = require("ws");
+// server.js
+import http from "http";
+import WebSocket, { WebSocketServer } from "ws";
+import fs from "fs";
+import { OAuth2Client } from "google-auth-library";
 
 const PORT = process.env.PORT || 8080;
-const wss = new WebSocket.Server({ port: PORT });
 
-let polygons = [];
-let chatrooms = {
+// TODO: replace with your real Google Client ID
+const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID";
+
+// Load permissions from JSON
+// { "email": "KSROC", "other@email": "KSNT" }
+const PERMISSIONS = JSON.parse(fs.readFileSync("./permissions.json", "utf8"));
+
+// In-memory chatrooms
+const chatrooms = {
   KSROC: [],
   KSNT: []
 };
 
-function broadcast(obj) {
-  const msg = JSON.stringify(obj);
-  wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg);
+const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+async function verifyIdToken(idToken) {
+  const ticket = await client.verifyIdToken({
+    idToken,
+    audience: GOOGLE_CLIENT_ID
+  });
+  const payload = ticket.getPayload();
+  return payload.email;
+}
+
+const server = http.createServer();
+const wss = new WebSocketServer({ server });
+
+function broadcastToAll(data) {
+  const msg = JSON.stringify(data);
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(msg);
+    }
   });
 }
 
-wss.on("connection", ws => {
-  console.log("Client connected");
+wss.on("connection", (ws) => {
+  console.log("[WS] Client connected");
 
-  ws.send(JSON.stringify({
-    type: "init",
-    polygons,
-    chatrooms
-  }));
+  // Send initial chat history
+  ws.send(
+    JSON.stringify({
+      type: "init",
+      chatrooms
+    })
+  );
 
-  ws.on("message", msg => {
-    const data = JSON.parse(msg);
-
-    if (data.type === "polygon") {
-      const id = "poly-" + Math.random().toString(36).substring(2, 10);
-      const timestamp = Date.now();
-
-      const entry = { id, polygon: data.polygon, timestamp };
-      polygons.push(entry);
-
-      broadcast({
-        type: "polygon",
-        id,
-        polygon: data.polygon
-      });
-
-      setTimeout(() => {
-        polygons = polygons.filter(p => p.id !== id);
-
-        broadcast({
-          type: "delete",
-          id
-        });
-
-        console.log("Expired polygon:", id);
-      }, 300000);
-
+  ws.on("message", async (raw) => {
+    let data;
+    try {
+      data = JSON.parse(raw.toString());
+    } catch (e) {
+      console.error("[WS] Bad JSON:", e);
       return;
     }
 
-    if (data.type === "chat") {
-      const { room, time, text } = data;
-      if (!chatrooms[room]) return;
+    // AUTH handshake from client
+    if (data.type === "auth") {
+      try {
+        const email = await verifyIdToken(data.idToken);
+        const allowedRoom = PERMISSIONS[email];
 
-      chatrooms[room].push({ room, time, text });
+        if (!allowedRoom) {
+          ws.send(
+            JSON.stringify({
+              type: "auth-denied",
+              reason: "No admin access for this Gmail."
+            })
+          );
+          console.log("[AUTH] Denied:", email);
+          return;
+        }
 
-      broadcast({
-        type: "chat",
-        room,
-        time,
-        text
-      });
+        ws._email = email;
+        ws._allowedRoom = allowedRoom;
 
-      console.log(`Chat → ${room}: ${text}`);
+        ws.send(
+          JSON.stringify({
+            type: "auth-ok",
+            email,
+            allowedRoom
+          })
+        );
+
+        console.log("[AUTH] OK:", email, "->", allowedRoom);
+      } catch (err) {
+        console.error("[AUTH] Error verifying token:", err);
+        ws.send(
+          JSON.stringify({
+            type: "auth-denied",
+            reason: "Token verification failed."
+          })
+        );
+      }
       return;
     }
 
-    if (data.type === "image") {
-      const { room, time, image } = data;
-      if (!chatrooms[room]) return;
+    // Require auth for chat/image
+    if (data.type === "chat" || data.type === "image") {
+      if (!ws._email || !ws._allowedRoom) {
+        console.log("[AUTH] Unauthenticated client tried to send.");
+        return;
+      }
 
-      chatrooms[room].push({ room, time, image });
+      // Enforce room restriction
+      if (data.room !== ws._allowedRoom) {
+        console.log(
+          "[AUTH] User",
+          ws._email,
+          "tried to send to unauthorized room",
+          data.room
+        );
+        return;
+      }
 
-      broadcast({
-        type: "image",
-        room,
-        time,
-        image
-      });
+      const entry = {
+        type: data.type,
+        room: data.room,
+        time: data.time,
+        text: data.text,
+        image: data.image
+      };
 
-      console.log(`Image → ${room}`);
+      if (!chatrooms[data.room]) chatrooms[data.room] = [];
+      chatrooms[data.room].push(entry);
+
+      broadcastToAll(entry);
       return;
     }
   });
+
+  ws.on("close", () => {
+    console.log("[WS] Client disconnected");
+  });
 });
 
-console.log("WebSocket server running on port", PORT);
+server.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
