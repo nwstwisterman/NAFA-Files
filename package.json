@@ -1,0 +1,17 @@
+module
+{
+  "name": "iembot-server",
+  "version": "1.0.0",
+  "description": "IEMBot WebSocket server for KSROC/KSNT chat + polygons",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "ws": "^8.17.0",
+    "google-auth-library": "^9.0.0"
+  }
+}
