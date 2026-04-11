@@ -1,0 +1,17 @@
+{
+  "name": "iembot-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "IEMBot WebSocket server for USA/MEXICO/CANADA chat",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "ws": "^8.17.0",
+    "google-auth-library": "^9.0.0"
+  }
+}
