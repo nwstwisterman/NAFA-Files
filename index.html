@@ -1,0 +1,643 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cesium Radar Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- CesiumJS -->
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Cesium.js"></script>
+
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+      background: #000; font-family: system-ui, sans-serif;
+    }
+
+    #topBar {
+      position: absolute; top: 10px; left: 10px; right: 260px;
+      display: flex; align-items: center; gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      z-index: 20;
+      background: rgba(0,0,0,0.75);
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(6px);
+    }
+
+    .toolbar-left {
+      display: flex; align-items: center; gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    #stationButtons {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      z-index: 21;
+    }
+
+    .toolbar-button,
+    .toolbar-select {
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(12,12,12,0.95);
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .toolbar-button {
+      cursor: pointer;
+      padding: 8px 12px;
+      min-width: 90px;
+      text-align: center;
+    }
+
+    .toolbar-button.secondary {
+      min-width: auto;
+      padding: 8px 11px;
+    }
+
+    .toolbar-button.active {
+      background: rgba(58,131,255,0.18);
+      border-color: #3a83ff;
+      color: #fff;
+    }
+
+    .toolbar-select {
+      padding: 8px 10px;
+      min-width: 140px;
+      appearance: none;
+      outline: none;
+      background: rgba(0,0,0,0.85);
+    }
+
+    .station-chip {
+      border-radius: 999px;
+      padding: 7px 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      font-size: 12px;
+    }
+
+    #legend,
+    #rightFilters,
+    #timestamp,
+    #wxRadio {
+      position: absolute;
+      z-index: 15;
+      background: rgba(0,0,0,0.76);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #fff;
+      box-shadow: 0 12px 35px rgba(0,0,0,0.25);
+      backdrop-filter: blur(8px);
+    }
+
+    #legend {
+      top: 72px;
+      left: 10px;
+      width: 240px;
+      padding: 14px 16px;
+      font-size: 13px;
+    }
+
+    #legend .section-title,
+    #rightFilters h4 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #bbb;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      line-height: 1.2;
+    }
+
+    .legend-color {
+      width: 14px;
+      height: 14px;
+      margin-right: 10px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    #rightFilters {
+      top: 72px;
+      right: 10px;
+      min-width: 220px;
+      padding: 14px 16px;
+      font-size: 13px;
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-button {
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(22,22,22,0.95);
+      color: #fff;
+      font-size: 12px;
+      padding: 7px 10px;
+      cursor: pointer;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .filter-button.active {
+      background: rgba(255,255,255,0.12);
+      border-color: #fff;
+    }
+
+    #timestamp {
+      bottom: 18px;
+      left: 18px;
+      padding: 10px 14px;
+      font-size: 13px;
+      max-width: 320px;
+    }
+
+    #wxRadio {
+      bottom: 18px;
+      right: 18px;
+      width: 260px;
+      padding: 14px 16px;
+    }
+
+    #wxRadio audio {
+      width: 100%;
+      margin-top: 6px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.06);
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+
+  <div id="topBar">
+    <div class="toolbar-left">
+      <div class="toolbar-button active">Radar</div>
+      <div class="toolbar-button secondary" id="simulatorButton">Simulator</div>
+      <div class="toolbar-button secondary" id="chaseButton">Chase Mode</div>
+      <div class="toolbar-button secondary" id="radioButton">Weather Radio</div>
+      <div class="toolbar-button secondary" id="hazcamsButton">HazCams</div>
+      <div class="toolbar-button secondary" id="lightningButton">Lightning (0)</div>
+      <select id="productSelect" class="toolbar-select">
+        <option value="nexrad-n0q-900913">N0Q – Base Reflectivity</option>
+        <option value="nexrad-n0r-900913">N0R – Legacy Reflectivity</option>
+      </select>
+      <select id="spcSelect" class="toolbar-select">
+        <option value="none">SPC: None</option>
+        <option value="d1_cat">SPC: Day 1 Categorical</option>
+        <option value="d1_tor">SPC: Day 1 Tornado</option>
+        <option value="d1_wind">SPC: Day 1 Wind</option>
+        <option value="d1_hail">SPC: Day 1 Hail</option>
+        <option value="d2_cat">SPC: Day 2 Categorical</option>
+        <option value="d3_cat">SPC: Day 3 Categorical</option>
+        <option value="d48_prob">SPC: Day 4–8 Probabilistic</option>
+      </select>
+      <select id="regionSelect" class="toolbar-select">
+        <option value="plains">Plains</option>
+        <option value="midwest">Midwest</option>
+        <option value="northeast">Northeast</option>
+        <option value="south">South</option>
+        <option value="west">West</option>
+        <option value="southeast">Southeast</option>
+      </select>
+      <button id="satButton" class="toolbar-button secondary">Satellite</button>
+    </div>
+  </div>
+
+  <div id="stationButtons">
+    <div class="station-chip">KUEX</div>
+    <div class="station-chip">KOAX</div>
+    <div class="station-chip">KTWX</div>
+    <div class="station-chip">KICT</div>
+    <div class="station-chip">KDDC</div>
+    <div class="station-chip">KGLD</div>
+  </div>
+
+  <div id="legend">
+    <div class="section-title">NWS Warnings</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FF0000"></div>Tornado Warning</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FFA500"></div>Severe Thunderstorm Warning</div>
+    <div class="legend-item"><div class="legend-color" style="background:#00FF00"></div>Flash/Flood Warning</div>
+    <div class="legend-item"><div class="legend-color" style="background:#8000FF"></div>Winter Storm Warning</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FFFF00"></div>Marine Warning</div>
+    <div class="legend-item"><div class="legend-color" style="background:#00FFFF"></div>Other Alerts</div>
+
+    <div style="margin: 12px 0; border-top: 1px solid rgba(255,255,255,0.12);"></div>
+
+    <div class="legend-item"><div class="legend-color" style="background:#32CD32"></div>SPC Marginal</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FFFF00"></div>SPC Slight</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FFA500"></div>SPC Enhanced</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FF00FF"></div>SPC Moderate</div>
+    <div class="legend-item"><div class="legend-color" style="background:#FF0000"></div>SPC High</div>
+  </div>
+
+  <div id="rightFilters">
+    <h4>Warning Filters</h4>
+    <div class="filter-row">
+      <button class="filter-button active" data-filter="TOR">TOR</button>
+      <button class="filter-button active" data-filter="SVR">SVR</button>
+      <button class="filter-button active" data-filter="FFW">FFW</button>
+      <button class="filter-button active" data-filter="WIN">WIN</button>
+      <button class="filter-button active" data-filter="MAR">MAR</button>
+      <button class="filter-button active" data-filter="OTH">OTH</button>
+    </div>
+  </div>
+
+  <div id="timestamp">Radar (nexrad-n0q-900913) — updated --:--:-- PM</div>
+
+  <div id="wxRadio">
+    <div style="font-size:12px;color:#ccc;margin-bottom:8px;">Weather Radio</div>
+    <audio id="radioAudio" controls>
+      <source src="https://noaaweatherradio.org/stream/KBUF" type="audio/mpeg">
+      Your browser does not support the audio element.
+    </audio>
+  </div>
+
+  <script>
+    const baseImageryProvider = new Cesium.UrlTemplateImageryProvider({
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      maximumLevel: 19
+    });
+
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      imageryProvider: baseImageryProvider,
+      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+      timeline: false,
+      animation: false,
+      baseLayerPicker: false,
+      geocoder: false,
+      homeButton: false,
+      sceneModePicker: false,
+      navigationHelpButton: false,
+      fullscreenButton: false,
+      infoBox: false,
+      selectionIndicator: false,
+    });
+
+    function loadFallbackBasemap() {
+      if (viewer.imageryLayers.length > 0) {
+        viewer.imageryLayers.remove(viewer.imageryLayers.get(0), true);
+      }
+      const fallback = viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({
+        url: 'https://a.tile.openstreetmap.org/'
+      }));
+      fallback.alpha = 1.0;
+      console.log('Fallback base imagery loaded');
+    }
+
+    if (baseImageryProvider.readyPromise) {
+      baseImageryProvider.readyPromise
+        .then(() => console.log('Satellite imagery ready'))
+        .catch(error => {
+          console.warn('Satellite imagery failed to initialize', error);
+          loadFallbackBasemap();
+        });
+    } else {
+      console.warn('Satellite imagery provider has no readyPromise, using fallback');
+      loadFallbackBasemap();
+    }
+
+    if (baseImageryProvider.errorEvent) {
+      baseImageryProvider.errorEvent.addEventListener(error => {
+        console.warn('Satellite imagery tile error', error);
+        loadFallbackBasemap();
+      });
+    }
+
+    viewer.scene.globe.depthTestAgainstTerrain = true;
+    viewer.scene.globe.terrainExaggeration = 2.0;
+    viewer.shadows = true;
+    viewer.scene.shadowMap.enabled = true;
+    viewer.scene.shadowMap.softShadows = true;
+    viewer.scene.shadowMap.size = 2048;
+
+    // Satellite toggle: replace base imagery with satellite or OSM
+    const satButton = document.getElementById('satButton');
+    let currentBaseLayer = null;
+
+    function setSatellite(on) {
+      try {
+        // remove existing base (index 0) if any
+        if (viewer.imageryLayers.length > 0) {
+          viewer.imageryLayers.remove(viewer.imageryLayers.get(0), true);
+        }
+
+        if (on) {
+          const satProv = new Cesium.UrlTemplateImageryProvider({
+            url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            maximumLevel: 19
+          });
+          currentBaseLayer = viewer.imageryLayers.addImageryProvider(satProv);
+          // ensure base is at bottom
+          viewer.imageryLayers.lowerToBottom(currentBaseLayer);
+          currentBaseLayer.alpha = 1.0;
+          satButton.classList.add('active');
+        } else {
+          const osm = viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({
+            url: 'https://a.tile.openstreetmap.org/'
+          }));
+          osm.alpha = 1.0;
+          currentBaseLayer = osm;
+          satButton.classList.remove('active');
+        }
+        console.log('Base imagery set to', on ? 'satellite' : 'osm');
+      } catch (e) {
+        console.warn('Failed to set base imagery', e);
+      }
+    }
+
+    satButton.addEventListener('click', () => {
+      const on = !satButton.classList.contains('active');
+      setSatellite(on);
+    });
+
+    // Try to enable satellite on startup
+    setSatellite(true);
+
+    const controller = viewer.scene.screenSpaceCameraController;
+    controller.enableTilt = true;
+    controller.enableLook = true;
+    controller.enableRotate = true;
+    controller.minimumPitch = Cesium.Math.toRadians(-90);
+    controller.minimumZoomDistance = 1.0;
+    const productSelect = document.getElementById('productSelect');
+    const spcSelect = document.getElementById('spcSelect');
+    const regionSelect = document.getElementById('regionSelect');
+    const timestampElement = document.getElementById('timestamp');
+    const chaseButton = document.getElementById('chaseButton');
+    const radioButton = document.getElementById('radioButton');
+    const filterButtons = document.querySelectorAll('.filter-button');
+    const audioElement = document.getElementById('radioAudio');
+
+    let radarLayer = null;
+    let warningsDS = null;
+    let spcLayer = null;
+    let chaseMode = false;
+    let radioOn = true;
+
+    const radarConfig = {
+      'nexrad-n0q-900913': { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi', layers: 'nexrad-n0q-900913' },
+      'nexrad-n0r-900913': { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r.cgi', layers: 'nexrad-n0r-900913' }
+    };
+
+    const spcConfig = {
+      none: null,
+      d1_cat: { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/spc/d1_cat.cgi', layers: 'd1_cat' },
+      d1_tor: { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/spc/d1_tor.cgi', layers: 'd1_tor' },
+      d1_wind: { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/spc/d1_wind.cgi', layers: 'd1_wind' },
+      d1_hail: { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/spc/d1_hail.cgi', layers: 'd1_hail' },
+      d2_cat: { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/spc/d2_cat.cgi', layers: 'd2_cat' },
+      d3_cat: { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/spc/d3_cat.cgi', layers: 'd3_cat' },
+      d48_prob: { url: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/spc/d48_prob.cgi', layers: 'd48_prob' }
+    };
+
+    const regionDestinations = {
+      plains: { lon: -98.5, lat: 39.5, height: 3550000 },
+      midwest: { lon: -90.0, lat: 41.5, height: 3200000 },
+      northeast: { lon: -75.0, lat: 42.5, height: 3000000 },
+      south: { lon: -90.0, lat: 32.5, height: 3000000 },
+      west: { lon: -110.0, lat: 38.0, height: 3200000 },
+      southeast: { lon: -84.0, lat: 31.5, height: 3150000 }
+    };
+
+    function updateTimestamp(message) {
+      timestampElement.textContent = message || `Radar (${productSelect.value}) — updated ${new Date().toLocaleTimeString()}`;
+    }
+
+    function removeLayer(layer) {
+      if (layer && viewer.imageryLayers.contains(layer)) {
+        viewer.imageryLayers.remove(layer);
+      }
+    }
+
+    function removeWarningDataSource() {
+      if (warningsDS && viewer.dataSources.contains(warningsDS)) {
+        viewer.dataSources.remove(warningsDS, true);
+        warningsDS = null;
+      }
+    }
+
+    function createWMSLayer(config, alpha = 0.7) {
+      const layer = viewer.imageryLayers.addImageryProvider(new Cesium.WebMapServiceImageryProvider({
+        url: config.url,
+        layers: config.layers,
+        parameters: {
+          transparent: true,
+          format: 'image/png',
+          version: '1.3.0'
+        }
+      }));
+      layer.alpha = alpha;
+      return layer;
+    }
+
+    function loadRadar() {
+      const config = radarConfig[productSelect.value];
+      if (!config) {
+        updateTimestamp('Radar configuration not found.');
+        return;
+      }
+      removeLayer(radarLayer);
+      radarLayer = createWMSLayer(config, 0.92);
+      if (radarLayer && radarLayer.imageryProvider && radarLayer.imageryProvider.readyPromise) {
+        radarLayer.imageryProvider.readyPromise
+          .then(() => updateTimestamp(`Radar (${productSelect.value}) — updated ${new Date().toLocaleTimeString()}`))
+          .catch(() => updateTimestamp('Radar failed to load.'));
+      } else {
+        updateTimestamp(`Radar (${productSelect.value}) — loaded`);
+      }
+    }
+
+    function classify(event) {
+      event = event.toLowerCase();
+      if (event.includes('tornado')) return 'TOR';
+      if (event.includes('severe')) return 'SVR';
+      if (event.includes('flood')) return 'FFW';
+      if (event.includes('winter') || event.includes('ice')) return 'WIN';
+      if (event.includes('marine')) return 'MAR';
+      return 'OTH';
+    }
+
+    function groupColor(g) {
+      switch (g) {
+        case 'TOR': return Cesium.Color.RED.withAlpha(0.35);
+        case 'SVR': return Cesium.Color.ORANGE.withAlpha(0.35);
+        case 'FFW': return Cesium.Color.LIME.withAlpha(0.35);
+        case 'WIN': return Cesium.Color.PURPLE.withAlpha(0.35);
+        case 'MAR': return Cesium.Color.YELLOW.withAlpha(0.35);
+        default:    return Cesium.Color.CYAN.withAlpha(0.35);
+      }
+    }
+
+    function isFilterActive(code) {
+      const btn = document.querySelector(`.filter-button[data-filter="${code}"]`);
+      return btn && btn.classList.contains('active');
+    }
+
+    function applyWarningFilterVisibility() {
+      if (!warningsDS) return;
+      warningsDS.entities.values.forEach(ent => {
+        const g = ent.properties.group.getValue();
+        ent.show = isFilterActive(g);
+      });
+    }
+
+    function loadWarnings() {
+      fetch('https://api.weather.gov/alerts/active')
+        .then(r => {
+          if (!r.ok) {
+            throw new Error(`Warning feed failed: ${r.status}`);
+          }
+          return r.json();
+        })
+        .then(json => {
+          const fc = { type: 'FeatureCollection', features: [] };
+
+          json.features.forEach(f => {
+            if (!f.geometry || (f.geometry.type !== 'Polygon' && f.geometry.type !== 'MultiPolygon')) {
+              return;
+            }
+            const event = f.properties && f.properties.event ? f.properties.event : 'Alert';
+            fc.features.push({
+              type: 'Feature',
+              geometry: f.geometry,
+              properties: { group: classify(event), event }
+            });
+          });
+
+          console.log('NWS warnings fetched', json.features.length, 'features,', fc.features.length, 'valid polygons');
+
+          if (fc.features.length === 0) {
+            updateTimestamp('Warnings loaded: no valid polygons in current feed.');
+            return;
+          }
+
+          if (warningsDS && viewer.dataSources.contains(warningsDS)) {
+            viewer.dataSources.remove(warningsDS, true);
+          }
+
+          warningsDS = new Cesium.GeoJsonDataSource();
+          return warningsDS.load(fc, { clampToGround: true });
+        })
+        .then(ds => {
+          let polygonCount = 0;
+          let polylineCount = 0;
+          ds.entities.values.forEach(ent => {
+            const g = ent.properties && ent.properties.group ? ent.properties.group.getValue() : 'OTH';
+            const color = groupColor(g);
+            if (ent.polygon) {
+              polygonCount++;
+              ent.polygon.material = color;
+              ent.polygon.outline = true;
+              ent.polygon.outlineColor = Cesium.Color.WHITE;
+              ent.polygon.outlineWidth = 2;
+            }
+            if (ent.polyline) {
+              polylineCount++;
+              ent.polyline.material = color;
+              ent.polyline.width = 3;
+            }
+          });
+          console.log('Warnings data source loaded', polygonCount, 'polygons,', polylineCount, 'polylines');
+          viewer.dataSources.add(ds);
+          applyWarningFilterVisibility();
+          updateTimestamp(`Warnings updated ${new Date().toLocaleTimeString()}`);
+          viewer.scene.requestRender();
+        })
+        .catch(error => {
+          console.warn('Warning load failed', error);
+          updateTimestamp('Warnings failed to load.');
+        });
+    }
+
+    function loadSPC() {
+      removeLayer(spcLayer);
+      const config = spcConfig[spcSelect.value];
+      if (!config) {
+        spcLayer = null;
+        return;
+      }
+      spcLayer = createWMSLayer(config, 0.55);
+      spcLayer.imageryProvider.readyPromise.catch(() => {
+        console.warn('SPC overlay is unavailable.');
+      });
+    }
+
+    function setRegion() {
+      const region = regionSelect.value;
+      const dest = regionDestinations[region];
+      if (!dest) return;
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, dest.height),
+        orientation: { heading: Cesium.Math.toRadians(0), pitch: Cesium.Math.toRadians(-45), roll: 0 },
+        duration: 2.5
+      });
+    }
+
+    productSelect.addEventListener('change', loadRadar);
+    spcSelect.addEventListener('change', loadSPC);
+    regionSelect.addEventListener('change', setRegion);
+
+    chaseButton.addEventListener('click', () => {
+      chaseMode = !chaseMode;
+      chaseButton.classList.toggle('active', chaseMode);
+      chaseButton.textContent = chaseMode ? 'Chase Mode ON' : 'Chase Mode';
+    });
+
+    radioButton.addEventListener('click', () => {
+      radioOn = !radioOn;
+      audioElement.muted = !radioOn;
+      radioButton.classList.toggle('active', radioOn);
+      radioButton.textContent = radioOn ? 'Weather Radio' : 'Radio Muted';
+    });
+
+    filterButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        button.classList.toggle('active');
+        applyWarningFilterVisibility();
+      });
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'c' || e.key === 'C') {
+        chaseMode = !chaseMode;
+        chaseButton.classList.toggle('active', chaseMode);
+        chaseButton.textContent = chaseMode ? 'Chase Mode ON' : 'Chase Mode';
+      }
+    });
+
+    viewer.clock.onTick.addEventListener(() => {
+      if (!chaseMode) return;
+      viewer.camera.moveForward(80);
+    });
+
+    loadRadar();
+    loadWarnings();
+    loadSPC();
+    setRegion();
+
+    setInterval(loadRadar, 120000);
+    setInterval(loadWarnings, 120000);
+    setInterval(loadSPC, 120000);
+  </script>
+</body>
+</html>
