@@ -22,10 +22,17 @@ function createStation(name) {
       `streams/${name}/index.m3u8`
     ]);
 
-    req.pipe(ffmpeg.stdin);
+    // Accept ANY incoming audio stream (Icecast, Shoutcast, raw MP3)
+    req.on("data", chunk => {
+      ffmpeg.stdin.write(chunk);
+    });
+
+    req.on("end", () => {
+      ffmpeg.stdin.end();
+      console.log(`${name} stream ended`);
+    });
 
     ffmpeg.stderr.on("data", d => console.log("FFmpeg:", d.toString()));
-    ffmpeg.on("close", () => console.log(`${name} stream ended`));
 
     res.end("OK");
   });
