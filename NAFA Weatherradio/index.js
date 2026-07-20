@@ -3,28 +3,35 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const app = express();
 
-// --- CONFIG ---
+// -------------------------------
+// CONFIG
+// -------------------------------
 const STATIONS = ["WXL20", "WXK97", "KIG86"];
 const HLS_TIME = 5;
 const HLS_LIST_SIZE = 5;
 const HLS_BITRATE = "64k";
 
-// --- UTIL ---
+// -------------------------------
+// UTIL
+// -------------------------------
 function ensureDir(path) {
   if (!fs.existsSync(path)) {
     fs.mkdirSync(path, { recursive: true });
   }
 }
 
-// --- CORE: CREATE STATION ---
+// -------------------------------
+// ICECAST-COMPATIBLE UPLOAD HANDLER
+// -------------------------------
 function createStation(name) {
   const streamDir = `streams/${name}`;
   ensureDir(streamDir);
 
-  // Accept ANY method (POST, SOURCE, etc.)
+  // Accept ANY method: POST, PUT, SOURCE, etc.
   app.all(`/upload/${name}`, (req, res) => {
     console.log(`[${name}] Broadcaster connected`);
 
+    // Spawn FFmpeg HLS pipeline
     const ffmpeg = spawn("ffmpeg", [
       "-i", "pipe:0",
       "-c:a", "aac",
@@ -36,18 +43,17 @@ function createStation(name) {
       `${streamDir}/index.m3u8`
     ]);
 
+    // FFmpeg logging
     ffmpeg.stderr.on("data", d => {
-      const msg = d.toString();
-      if (msg.trim().length > 0) {
-        console.log(`[${name}] FFmpeg: ${msg.trim()}`);
-      }
+      const msg = d.toString().trim();
+      if (msg.length > 0) console.log(`[${name}] FFmpeg: ${msg}`);
     });
 
     ffmpeg.on("close", code => {
       console.log(`[${name}] FFmpeg exited with code ${code}`);
     });
 
-    // Pipe ANY incoming data (Icecast, Shoutcast, raw MP3)
+    // Accept ANY incoming audio stream (Icecast, Shoutcast, raw MP3)
     req.on("data", chunk => {
       ffmpeg.stdin.write(chunk);
     });
@@ -65,10 +71,14 @@ function createStation(name) {
   app.use(`/${name}`, express.static(streamDir));
 }
 
-// --- INIT ALL STATIONS ---
+// -------------------------------
+// INIT ALL STATIONS
+// -------------------------------
 STATIONS.forEach(createStation);
 
-// --- ROOT + STATUS ---
+// -------------------------------
+// ROOT STATUS ENDPOINT
+// -------------------------------
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -80,7 +90,9 @@ app.get("/", (req, res) => {
   });
 });
 
-// --- START SERVER ---
+// -------------------------------
+// START SERVER
+// -------------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Weather Radio HLS server running on port ${PORT}`);
