@@ -1,0 +1,10 @@
+services:
+  - name: hls-server
+    type: web
+    env: docker
+    dockerfilePath: Dockerfile
+    autoDeploy: true
+    plan: starter
+    ports:
+      - port: 3000
+        protocol: http
