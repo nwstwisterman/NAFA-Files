@@ -1,0 +1,26 @@
+<icecast>
+  <location>NAFA Weather Radio</location>
+  <admin>admin@nafa</admin>
+
+  <limits>
+    <clients>100</clients>
+    <sources>50</sources>
+    <queue-size>524288</queue-size>
+    <burst-size>65535</burst-size>
+  </limits>
+
+  <listen-socket>
+    <bind-address>0.0.0.0</bind-address>
+    <port>${PORT}</port>
+  </listen-socket>
+
+  <authentication>
+    <source-password>hackme</source-password>
+    <relay-password>hackme</relay-password>
+    <admin-user>admin</admin-user>
+    <admin-password>hackme</admin-password>
+  </authentication>
+
+  <fileserve>1</fileserve>
+
+  <!-- mountpoints will be appended here -->
