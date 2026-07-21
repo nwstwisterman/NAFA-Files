@@ -21,6 +21,30 @@ function ensureDir(path) {
 }
 
 // -------------------------------
+// BASIC AUTH FOR BUTTM LINK
+// -------------------------------
+app.use((req, res, next) => {
+  const auth = req.headers["authorization"];
+
+  // Require Basic Auth
+  if (!auth) {
+    res.set("WWW-Authenticate", 'Basic realm="WeatherStream"');
+    return res.status(401).send("Authentication required");
+  }
+
+  // Decode Basic Auth
+  const base64 = auth.split(" ")[1];
+  const [user, pass] = Buffer.from(base64, "base64").toString().split(":");
+
+  // Accept ANY username, require password "1"
+  if (pass !== "1") {
+    return res.status(403).send("Forbidden");
+  }
+
+  next();
+});
+
+// -------------------------------
 // ICECAST-COMPATIBLE UPLOAD HANDLER
 // -------------------------------
 function createStation(name) {
