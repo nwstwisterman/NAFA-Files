@@ -21,23 +21,21 @@ function ensureDir(path) {
 }
 
 // -------------------------------
-// BASIC AUTH FOR BUTTM LINK
+// ICECAST AUTHENTICATION
 // -------------------------------
 app.use((req, res, next) => {
   const auth = req.headers["authorization"];
 
-  // Require Basic Auth
   if (!auth) {
-    res.set("WWW-Authenticate", 'Basic realm="WeatherStream"');
+    res.set("WWW-Authenticate", 'Basic realm="Icecast"');
     return res.status(401).send("Authentication required");
   }
 
-  // Decode Basic Auth
   const base64 = auth.split(" ")[1];
   const [user, pass] = Buffer.from(base64, "base64").toString().split(":");
 
-  // Accept ANY username, require password "1"
-  if (pass !== "1") {
+  // Icecast requires username "source"
+  if (user !== "source" || pass !== "1") {
     return res.status(403).send("Forbidden");
   }
 
@@ -51,9 +49,14 @@ function createStation(name) {
   const streamDir = `streams/${name}`;
   ensureDir(streamDir);
 
-  // Accept ANY method: POST, PUT, SOURCE, etc.
   app.all(`/upload/${name}`, (req, res) => {
     console.log(`[${name}] Broadcaster connected`);
+
+    // Send Icecast-style response headers
+    res.set("Server", "Icecast");
+    res.set("ice-audio-info", "bitrate=64");
+    res.set("Content-Type", "text/plain");
+    res.status(200).end("OK");
 
     // Spawn FFmpeg HLS pipeline
     const ffmpeg = spawn("ffmpeg", [
@@ -67,7 +70,6 @@ function createStation(name) {
       `${streamDir}/index.m3u8`
     ]);
 
-    // FFmpeg logging
     ffmpeg.stderr.on("data", d => {
       const msg = d.toString().trim();
       if (msg.length > 0) console.log(`[${name}] FFmpeg: ${msg}`);
@@ -77,7 +79,6 @@ function createStation(name) {
       console.log(`[${name}] FFmpeg exited with code ${code}`);
     });
 
-    // Accept ANY incoming audio stream (Icecast, Shoutcast, raw MP3)
     req.on("data", chunk => {
       ffmpeg.stdin.write(chunk);
     });
@@ -86,12 +87,8 @@ function createStation(name) {
       ffmpeg.stdin.end();
       console.log(`[${name}] Stream ended`);
     });
-
-    // Respond immediately; stream continues until client disconnects
-    res.status(200).end("OK");
   });
 
-  // Public HLS output
   app.use(`/${name}`, express.static(streamDir));
 }
 
