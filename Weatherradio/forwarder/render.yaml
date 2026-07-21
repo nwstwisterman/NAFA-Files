@@ -1,6 +1,0 @@
-services:
-  - name: forwarder
-    type: worker
-    env: docker
-    dockerfilePath: Dockerfile
-    autoDeploy: true

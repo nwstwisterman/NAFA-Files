@@ -1,4 +1,0 @@
-FROM jrottenberg/ffmpeg:4.4-ubuntu
-COPY forward.sh /forward.sh
-RUN chmod +x /forward.sh
-CMD ["/forward.sh"]
