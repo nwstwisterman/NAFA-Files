@@ -52,11 +52,12 @@ function createStation(name) {
   app.all(`/upload/${name}`, (req, res) => {
     console.log(`[${name}] Broadcaster connected`);
 
-    // Send Icecast-style response headers
+    // Send Icecast-style headers but DO NOT close the response
     res.set("Server", "Icecast");
     res.set("ice-audio-info", "bitrate=64");
     res.set("Content-Type", "text/plain");
-    res.status(200).end("OK");
+    res.status(200);
+    res.flushHeaders(); // <-- CRITICAL: keeps connection open
 
     // Spawn FFmpeg HLS pipeline
     const ffmpeg = spawn("ffmpeg", [
