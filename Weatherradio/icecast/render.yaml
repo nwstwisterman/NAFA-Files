@@ -4,3 +4,6 @@ services:
     env: docker
     dockerfilePath: Dockerfile
     autoDeploy: true
+    ports:
+      - port: 8000
+        protocol: tcp
