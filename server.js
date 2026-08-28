@@ -3,6 +3,7 @@ import http from "http";
 import WebSocket, { WebSocketServer } from "ws";
 import fs from "fs";
 import { OAuth2Client } from "google-auth-library";
+import { attachRelay } from "./relay-handler.js";
 
 const PORT = process.env.PORT || 8080;
 
@@ -43,7 +44,12 @@ function broadcastToAll(data) {
   });
 }
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
+  // NAFA Wx Live relay — branches off before any of your existing logic.
+  if (req.url && req.url.split("?")[0].startsWith("/relay")) {
+    return attachRelay(ws);
+  }
+
   console.log("[WS] Client connected");
 
   // ⭐ IMPORTANT:
